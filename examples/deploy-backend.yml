@@ -1,0 +1,50 @@
+# অ্যাপ repo তে: .github/workflows/deploy.yml
+name: deploy
+on:
+  push: { branches: [main] }
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency: { group: deploy-server, cancel-in-progress: false }
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name (lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/backend" >> "$GITHUB_ENV"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+
+      - name: Deploy over SSH (host key pinned)
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          TAG=${{ github.sha }}
+          # tag টা সার্ভারের .env এ লেখা থাকে, তাই পরে কেউ "docker compose up" দিলেও একই version চলে
+          ssh "$USER@$HOST" "cd /opt/azegamemarket && touch .env && \
+            sed -i '/^BACKEND_TAG=/d' .env && echo BACKEND_TAG=$TAG >> .env && \
+            docker compose pull backend && docker compose up -d --wait backend"

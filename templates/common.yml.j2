@@ -1,0 +1,14 @@
+# Ansible managed - সব প্রজেক্টে একই
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: strict-origin-when-cross-origin
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12

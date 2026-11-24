@@ -1,0 +1,20 @@
+# ========== নতুন প্রজেক্টে শুধু এই ফাইল বদলাও ==========
+all:
+  hosts:
+    azegamemarket:                    # প্রজেক্টের নাম (স্পেস ছাড়া)
+      ansible_host: 2.24.151.21       # নতুন VPS এর IP
+  vars:
+    project: azegamemarket
+    letsencrypt_email: you@example.com
+    apps:
+      - { name: website, domain: azegamemarket.com,       port: 3000 }
+      - { name: admin,   domain: admin.azegamemarket.com, port: 3001 }
+      - { name: backend, domain: api.azegamemarket.com,   port: 5000 }
+
+    # ---------- সাধারণত বদলাতে হবে না ----------
+    ansible_user: deploy
+    deploy_user: deploy
+    app_dir: "/opt/{{ project }}"
+    traefik_version: v3.3             # কোনো নির্দিষ্ট version pin রাখো, latest না
+    admin_pubkey_file: ~/.ssh/id_ed25519.pub
+    ci_pubkey_file: ~/.ssh/ci_deploy.pub

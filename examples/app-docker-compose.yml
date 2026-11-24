@@ -1,0 +1,44 @@
+# সার্ভারে /opt/azegamemarket/docker-compose.yml (CI বা তুমি একবার রাখবে)
+# কোনো "ports:" নেই - Traefik proxy network দিয়ে ঢোকে। alias = <project>-<app>
+services:
+  website:
+    image: ghcr.io/OWNER/website:${WEBSITE_TAG:-latest}
+    restart: always
+    env_file: ./website.env
+    networks:
+      proxy: { aliases: [azegamemarket-website] }
+
+  admin:
+    image: ghcr.io/OWNER/admin:${ADMIN_TAG:-latest}
+    restart: always
+    env_file: ./admin.env
+    networks:
+      proxy: { aliases: [azegamemarket-admin] }
+
+  backend:
+    image: ghcr.io/OWNER/backend:${BACKEND_TAG:-latest}
+    restart: always
+    env_file: ./backend.env
+    networks:
+      proxy: { aliases: [azegamemarket-backend] }
+      internal: {}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ডাটাবেস থাকলে: শুধু internal network এ, proxy তে কখনো না
+  # db:
+  #   image: postgres:16
+  #   restart: always
+  #   env_file: ./db.env
+  #   volumes: [pgdata:/var/lib/postgresql/data]
+  #   networks: [internal]
+
+networks:
+  proxy: { external: true }
+  internal: {}
+
+# volumes:
+#   pgdata: {}

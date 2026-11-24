@@ -1,0 +1,44 @@
+# একবারই চলে, root হিসেবে: deploy user বানায়, তারপর root আর password login বন্ধ করে।
+- name: Bootstrap (deploy user + SSH hardening)
+  hosts: all
+  become: true
+  tasks:
+    - name: Create deploy user
+      user: { name: "{{ deploy_user }}", shell: /bin/bash, groups: sudo, append: true }
+
+    - name: Add my SSH key to deploy user
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ lookup('file', admin_pubkey_file | expanduser) }}"
+
+    - name: Passwordless sudo for deploy
+      copy:
+        dest: "/etc/sudoers.d/90-{{ deploy_user }}"
+        content: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        mode: "0440"
+        validate: "visudo -cf %s"
+
+    - name: Safety check - deploy user can log in with my key
+      command: >-
+        ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new
+        {{ deploy_user }}@{{ ansible_host }} sudo -n true
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Harden SSH (no root login, no passwords)
+      copy:
+        dest: /etc/ssh/sshd_config.d/00-hardening.conf
+        content: |
+          PermitRootLogin no
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PubkeyAuthentication yes
+          MaxAuthTries 3
+        mode: "0644"
+        validate: "sshd -t -f %s"
+      notify: Restart ssh
+
+  handlers:
+    - name: Restart ssh
+      service: { name: ssh, state: restarted }

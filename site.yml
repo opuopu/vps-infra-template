@@ -1,0 +1,127 @@
+# যতবার খুশি চালানো যায় (idempotent)। deploy user হিসেবে চলে।
+- name: VPS setup (Docker + Firewall + Traefik + SSL + env)
+  hosts: all
+  become: true
+  handlers:
+    - name: Restart docker
+      service: { name: docker, state: restarted }
+
+  tasks:
+    # ---------- Base + security ----------
+    - name: Install base packages
+      apt:
+        name: [curl, ca-certificates, ufw, fail2ban, unattended-upgrades]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: fail2ban + unattended-upgrades running
+      service: { name: "{{ item }}", state: started, enabled: true }
+      loop: [fail2ban, unattended-upgrades]
+
+    - name: Check nginx
+      command: systemctl is-active nginx
+      register: nginx_status
+      changed_when: false
+      failed_when: false
+
+    - name: Stop if nginx is running
+      fail: { msg: "nginx চলছে। সার্ভারে চালাও: sudo systemctl disable --now nginx, তারপর আবার make setup।" }
+      when: nginx_status.stdout == "active"
+
+    - name: Firewall allow 22, 80, 443
+      community.general.ufw: { rule: allow, port: "{{ item }}", proto: tcp }
+      loop: ["22", "80", "443"]
+
+    - name: Firewall on (default deny incoming)
+      community.general.ufw: { state: enabled, policy: deny, direction: incoming }
+
+    # ---------- Docker ----------
+    - name: Install Docker
+      shell: curl -fsSL https://get.docker.com | sh
+      args: { creates: /usr/bin/docker }
+
+    - name: Docker log rotation
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          { "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+        mode: "0644"
+      notify: Restart docker
+
+    - name: Docker running
+      service: { name: docker, state: started, enabled: true }
+
+    - name: deploy user can run docker
+      user: { name: "{{ deploy_user }}", groups: docker, append: true }
+
+    - name: CI key can log in as deploy (optional)
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ lookup('file', ci_pubkey_file | expanduser) }}"
+      when: (ci_pubkey_file | expanduser) is file
+
+    - name: Shared proxy network
+      shell: docker network inspect proxy >/dev/null 2>&1 || { docker network create proxy && echo created; }
+      register: net
+      changed_when: "'created' in net.stdout"
+
+    # ---------- Traefik ----------
+    - name: Traefik folders
+      file: { path: "{{ item }}", state: directory, mode: "0755" }
+      loop: [/opt/traefik, /opt/traefik/dynamic, /opt/traefik/letsencrypt]
+
+    - name: SSL storage file
+      file:
+        path: /opt/traefik/letsencrypt/acme.json
+        state: touch
+        mode: "0600"
+        modification_time: preserve
+        access_time: preserve
+
+    - name: Traefik compose
+      template: { src: templates/traefik-compose.yml.j2, dest: /opt/traefik/docker-compose.yml, mode: "0644" }
+      register: compose_file
+
+    - name: Common Traefik config (headers + TLS)
+      template: { src: templates/common.yml.j2, dest: /opt/traefik/dynamic/_common.yml, mode: "0644" }
+
+    - name: This project's domain routes
+      template: { src: templates/routes.yml.j2, dest: "/opt/traefik/dynamic/{{ project }}.yml", mode: "0644" }
+
+    - name: Start / update Traefik
+      command: docker compose up -d {{ '--force-recreate' if compose_file.changed else '' }}
+      args: { chdir: /opt/traefik }
+      changed_when: compose_file.changed
+
+    # ---------- App folder + env (tag: env) ----------
+    - name: App folder
+      file: { path: "{{ app_dir }}", state: directory, owner: "{{ deploy_user }}", group: "{{ deploy_user }}", mode: "0750" }
+      tags: env
+
+    - name: Copy env files (vault auto-decrypt)
+      copy:
+        src: "{{ item }}"
+        dest: "{{ app_dir }}/{{ item | basename }}"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0600"
+      with_fileglob: "{{ playbook_dir }}/env/*.env"
+      register: env_files
+      no_log: true
+      tags: env
+
+    - name: Check app docker-compose
+      stat: { path: "{{ app_dir }}/docker-compose.yml" }
+      register: app_compose
+      tags: env
+
+    - name: Restart apps with new env
+      command: docker compose up -d
+      args: { chdir: "{{ app_dir }}" }
+      become_user: "{{ deploy_user }}"
+      when: env_files.changed and app_compose.stat.exists
+      tags: env
+
+    - name: Done
+      debug: { msg: "সেটআপ শেষ! {{ apps | map(attribute='domain') | join(', ') }}" }

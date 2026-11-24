@@ -1,0 +1,17 @@
+# Ansible managed - প্রজেক্ট: {{ project }}
+http:
+  routers:
+{% for app in apps %}
+    {{ project }}-{{ app.name }}:
+      rule: "Host(`{{ app.domain }}`)"
+      entryPoints: [websecure]
+      service: {{ project }}-{{ app.name }}
+      tls: { certResolver: le }
+{% endfor %}
+  services:
+{% for app in apps %}
+    {{ project }}-{{ app.name }}:
+      loadBalancer:
+        servers:
+          - url: "http://{{ project }}-{{ app.name }}:{{ app.port }}"
+{% endfor %}
