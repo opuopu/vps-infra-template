@@ -66,10 +66,38 @@
       register: net
       changed_when: "'created' in net.stdout"
 
+    # ---------- Cloudflare ----------
+    - name: Cloudflare IP ranges (always latest)
+      set_fact:
+        cloudflare_ips: "{{ (lookup('url', 'https://www.cloudflare.com/ips-v4', wantlist=True)
+                           + lookup('url', 'https://www.cloudflare.com/ips-v6', wantlist=True)) | map('trim') | select | list }}"
+
+    - name: Origin certificate present (cloudflare_only)
+      assert:
+        that:
+          - (playbook_dir + '/certs/origin.crt') is file
+          - (playbook_dir + '/certs/origin.key') is file
+        fail_msg: "cloudflare_only: true কিন্তু certs/origin.crt বা certs/origin.key নেই। ডকের Cloudflare-only সেকশন দেখো।"
+      when: cloudflare_only | bool
+
     # ---------- Traefik ----------
     - name: Traefik folders
       file: { path: "{{ item }}", state: directory, mode: "0755" }
       loop: [/opt/traefik, /opt/traefik/dynamic, /opt/traefik/letsencrypt]
+
+    - name: Traefik certs folder
+      file: { path: /opt/traefik/certs, state: directory, mode: "0700" }
+
+    - name: Copy origin certificate (vault auto-decrypt)
+      copy:
+        src: "{{ playbook_dir }}/certs/{{ item.src }}"
+        dest: "/opt/traefik/certs/{{ project }}.{{ item.ext }}"
+        mode: "0600"
+      loop:
+        - { src: origin.crt, ext: crt }
+        - { src: origin.key, ext: key }
+      no_log: true
+      when: cloudflare_only | bool
 
     - name: SSL storage file
       file:

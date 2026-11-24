@@ -6,8 +6,22 @@ http:
       rule: "Host(`{{ app.domain }}`)"
       entryPoints: [websecure]
       service: {{ project }}-{{ app.name }}
+{% if cloudflare_only | bool %}
+      middlewares: [{{ project }}-cloudflare-only]
+      tls: {}
+{% else %}
       tls: { certResolver: le }
+{% endif %}
 {% endfor %}
+{% if cloudflare_only | bool %}
+  middlewares:
+    {{ project }}-cloudflare-only:
+      ipAllowList:
+        sourceRange:
+{% for ip in cloudflare_ips %}
+          - "{{ ip }}"
+{% endfor %}
+{% endif %}
   services:
 {% for app in apps %}
     {{ project }}-{{ app.name }}:
@@ -15,3 +29,9 @@ http:
         servers:
           - url: "http://{{ project }}-{{ app.name }}:{{ app.port }}"
 {% endfor %}
+{% if cloudflare_only | bool %}
+tls:
+  certificates:
+    - certFile: /certs/{{ project }}.crt
+      keyFile: /certs/{{ project }}.key
+{% endif %}

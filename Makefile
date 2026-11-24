@@ -15,13 +15,13 @@ help:
 init:
 	@mkdir -p $(HOME)/.ansible && chmod 700 $(HOME)/.ansible
 	@[ -f $(VAULT_PASS) ] || (openssl rand -base64 32 > $(VAULT_PASS) && chmod 600 $(VAULT_PASS) && echo "✅ vault password তৈরি: $(VAULT_PASS)  (password manager এ ব্যাকআপ রাখো!)")
-	@mkdir -p env && for f in env.example/*.env; do [ -f env/$$(basename $$f) ] || cp $$f env/; done
+	@mkdir -p env certs && for f in env.example/*.env; do [ -f env/$$(basename $$f) ] || cp $$f env/; done
 	@if [ -d .git ]; then ln -sf ../../scripts/check-env-encrypted.sh .git/hooks/pre-commit; fi
 	@echo "✅ এখন env/*.env এ আসল মান বসাও, তারপর make encrypt"
 
 encrypt:
-	@for f in env/*.env; do head -n1 $$f | grep -q '^\$$ANSIBLE_VAULT' || ansible-vault encrypt $$f; done
-	@echo "✅ সব env encrypted"
+	@for f in env/*.env certs/*.key; do [ -e $$f ] || continue; head -n1 $$f | grep -q '^\$$ANSIBLE_VAULT' || ansible-vault encrypt $$f; done
+	@echo "✅ সব env আর key encrypted"
 
 edit-env:
 	ansible-vault edit env/$(APP).env

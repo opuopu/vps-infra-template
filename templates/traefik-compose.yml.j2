@@ -18,6 +18,9 @@ services:
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
       - --entrypoints.websecure.http.middlewares=secure-headers@file
+      # Cloudflare এর পাঠানো আসল ভিজিটর IP বিশ্বাস করো (শুধু Cloudflare থেকে এলে)
+      - --entrypoints.web.forwardedHeaders.trustedIPs={{ cloudflare_ips | join(',') }}
+      - --entrypoints.websecure.forwardedHeaders.trustedIPs={{ cloudflare_ips | join(',') }}
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
       - --certificatesresolvers.le.acme.email={{ letsencrypt_email }}
@@ -26,6 +29,7 @@ services:
     volumes:
       - ./dynamic:/etc/traefik/dynamic:ro
       - ./letsencrypt:/letsencrypt
+      - ./certs:/certs:ro
 
 networks:
   proxy:

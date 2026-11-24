@@ -11,6 +11,10 @@ all:
       - { name: admin,   domain: admin.azegamemarket.com, port: 3001 }
       - { name: backend, domain: api.azegamemarket.com,   port: 5000 }
 
+    # true = শুধু Cloudflare থেকে আসা request নেবে, SSL আসবে Cloudflare Origin
+    # Certificate থেকে (certs/origin.crt + certs/origin.key লাগবে)। ডোমেইন Cloudflare এ না থাকলে false।
+    cloudflare_only: false
+
     # ---------- সাধারণত বদলাতে হবে না ----------
     ansible_user: deploy
     deploy_user: deploy

@@ -1,0 +1,18 @@
+# Cloudflare-only মোডের উদাহরণ (শুধু vars অংশ বদলায়)
+all:
+  hosts:
+    clientshop:
+      ansible_host: 203.0.113.10
+  vars:
+    project: clientshop
+    letsencrypt_email: you@example.com
+    apps:
+      - { name: website, domain: clientshop.com,     port: 3000 }
+      - { name: backend, domain: api.clientshop.com, port: 5000 }
+    cloudflare_only: true          # certs/origin.crt + certs/origin.key লাগবে
+    ansible_user: deploy
+    deploy_user: deploy
+    app_dir: "/opt/{{ project }}"
+    traefik_version: v3.3
+    admin_pubkey_file: ~/.ssh/id_ed25519.pub
+    ci_pubkey_file: ~/.ssh/ci_deploy.pub
